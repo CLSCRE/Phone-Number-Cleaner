@@ -1,38 +1,44 @@
 import pandas as pd
-import requests
-from time import sleep
+import streamlit as st
 
-# Twilio credentials (replace with fresh ones after regenerating)
-account_sid = 'AC935841ebbf5ab62ca3bd70649affd9b9'
-auth_token = '801b6d55a8643200a9beaaa4c4fd1841'
+def format_to_e164(phone):
+    phone = ''.join(filter(str.isdigit, str(phone)))
+    if len(phone) == 10:
+        return "+1" + phone
+    elif len(phone) == 11 and phone.startswith("1"):
+        return "+" + phone
+    elif phone.startswith("+") and len(phone) > 10:
+        return phone
+    return None
 
-# Load E.164 formatted phone numbers
-df = pd.read_csv('Formatted_Phone_List_For_Twilio.csv')
-results = []
+st.title("Multi-Column Phone Extractor & Formatter for Twilio Lookup")
 
-for phone in df['E164 Phone']:
-    url = f"https://lookups.twilio.com/v2/PhoneNumbers/{phone}?type=carrier"
-    response = requests.get(url, auth=(account_sid, auth_token))
+uploaded_file = st.file_uploader("Upload Excel File with Phone Numbers", type=["xlsx"])
+
+if uploaded_file:
+    df = pd.read_excel(uploaded_file)
+
+    # Find all phone-related columns (case-insensitive match)
+    phone_cols = [col for col in df.columns if 'phone' in col.lower() or 'cell' in col.lower() or 'mobile' in col.lower()]
     
-    if response.status_code == 200:
-        data = response.json()
-        results.append({
-            "Phone": phone,
-            "Phone Type": data.get("carrier", {}).get("type"),
-            "Carrier": data.get("carrier", {}).get("name"),
-            "Ported": data.get("carrier", {}).get("ported"),
-        })
+    if not phone_cols:
+        st.warning("No phone-related columns found.")
     else:
-        results.append({
-            "Phone": phone,
-            "Phone Type": None,
-            "Carrier": None,
-            "Ported": None,
-        })
-    
-    sleep(0.5)  # Respect Twilio rate limits
+        st.write(f"Found phone columns: {phone_cols}")
 
-# Save enriched results
-output_df = pd.DataFrame(results)
-output_df.to_csv("Twilio_Enriched_Output.csv", index=False)
-print("Enrichment complete. Saved to Twilio_Enriched_Output.csv")
+        # Extract and format all phone numbers into a flat list
+        phone_series = pd.Series(dtype=str)
+        for col in phone_cols:
+            phone_series = phone_series.append(df[col], ignore_index=True)
+
+        # Drop blanks, format to E.164, and drop invalids
+        phone_series = phone_series.dropna().astype(str)
+        phone_series = phone_series.map(format_to_e164).dropna().drop_duplicates().reset_index(drop=True)
+
+        # Final DataFrame
+        formatted_df = pd.DataFrame({'E164 Phone': phone_series})
+
+        st.write("📋 Preview of formatted phone numbers:", formatted_df.head())
+
+        csv = formatted_df.to_csv(index=False)
+        st.download_button("📥 Download CSV for Twilio", csv, "Formatted_Phone_List_For_Twilio.csv", "text/csv")
