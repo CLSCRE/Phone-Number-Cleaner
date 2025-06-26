@@ -17,7 +17,7 @@ def lookup_status(phone, sid, token):
     if not phone or not phone.startswith("+"):
         return ("", "", "", "", "", phone, "Invalid")
 
-    url = f"https://lookups.twilio.com/v2/PhoneNumbers/{phone}?type=carrier"
+    url = f"https://lookups.twilio.com/v1/PhoneNumbers/{phone}?Type=carrier"
     try:
         response = requests.get(url, auth=(sid, token))
         if response.status_code == 200:
@@ -28,8 +28,8 @@ def lookup_status(phone, sid, token):
             country = data.get("country_code", "")
             national_format = data.get("national_format", "")
             return (phone_type, carrier, ported, country, national_format, phone, "Valid")
-    except:
-        pass
+    except Exception as e:
+        print(f"Lookup failed for {phone}: {e}")
     return ("", "", "", "", "", phone, "Error")
 
 st.title("📞 Multi-Column Phone Extractor & Twilio Enricher")
